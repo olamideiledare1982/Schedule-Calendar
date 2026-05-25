@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>UAL Schedule → Calendar</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0a0c0f; --surface:#111419; --border:#1e2530; --border-hi:#2d3748;
+  --amber:#f5a623; --amber-dim:#7a4f10;
+  --cyan:#4dd9e8;  --cyan-dim:#1a5f6a;
+  --green:#3ecf74; --green-dim:#1a4f30;
+  --red:#e84d4d;   --red-dim:#5a1f1f;
+  --text:#c8d0dc;  --text-dim:#5a6478; --text-hi:#eef2f8;
+  --mono:'IBM Plex Mono',monospace;
+  --sans:'IBM Plex Sans',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh}
+
+/* HEADER */
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 24px;
+  display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:100}
+.dot{width:8px;height:8px;background:var(--amber);border-radius:50%;
+  box-shadow:0 0 8px var(--amber);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+header h1{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--amber);
+  letter-spacing:.12em;text-transform:uppercase}
+#headerSub{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-left:auto}
+
+/* LAYOUT */
+main{max-width:780px;margin:0 auto;padding:28px 24px;display:flex;flex-direction:column;gap:20px}
+
+/* CARD */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:4px;overflow:hidden}
+.card-head{padding:11px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.card-label{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--text-dim)}
+.badge{font-family:var(--mono);font-size:10px;font-weight:600;color:var(--bg);
+  background:var(--amber);padding:2px 7px;border-radius:2px;letter-spacing:.05em}
+.badge.done{background:var(--green)}
+.card-body{padding:16px;display:flex;flex-direction:column;gap:14px}
+
+/* INPUTS */
+label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+  color:var(--text-dim);text-transform:uppercase;margin-bottom:5px}
+input[type=text],input[type=password]{width:100%;background:var(--bg);border:1px solid var(--border);
+  border-radius:3px;color:var(--text-hi);font-family:var(--mono);font-size:12px;
+  padding:9px 11px;outline:none;transition:border-color .15s}
+input:focus{border-color:var(--amber)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* DROP ZONE */
+.drop{border:1px dashed var(--border-hi);border-radius:4px;padding:32px 20px;
+  text-align:center;cursor:pointer;transition:all .15s;position:relative}
+.drop:hover,.drop.over{border-color:var(--amber);background:rgba(245,166,35,.04)}
+.drop input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.drop-icon{font-size:26px;margin-bottom:9px;opacity:.45}
+.drop-txt{font-family:var(--mono);font-size:12px;color:var(--text-dim);line-height:1.7}
+.drop-txt strong{color:var(--amber);font-weight:500}
+
+/* STATUS */
+.status{display:flex;align-items:center;gap:9px;padding:10px 16px;background:var(--bg);
+  border-top:1px solid var(--border);font-family:var(--mono);font-size:11px;
+  color:var(--text-dim);min-height:40px}
+.status.ok{color:var(--green);border-top-color:var(--green-dim)}
+.status.err{color:var(--red);border-top-color:var(--red-dim)}
+.status.busy{color:var(--amber);border-top-color:var(--amber-dim)}
+
+/* TABLE */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px}
+th{text-align:left;padding:8px 12px;font-size:9px;letter-spacing:.12em;color:var(--text-dim);
+  text-transform:uppercase;border-bottom:1px solid var(--border)}
+td{padding:7px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+.c-date{color:var(--amber)} .c-time{color:var(--cyan)}
+.c-loc{color:var(--text-dim);font-size:10px} .c-stu{max-width:170px}
+
+/* TYPE BADGES */
+.tb{display:inline-block;font-size:9px;font-weight:600;letter-spacing:.07em;
+  padding:2px 6px;border-radius:2px;text-transform:uppercase}
+.t-ffs{background:rgba(77,217,232,.15);color:var(--cyan)}
+.t-ftdb{background:rgba(245,166,35,.18);color:var(--amber)}
+.t-rd{background:rgba(90,100,120,.25);color:#8a95a8}
+.t-off{background:rgba(90,100,120,.1);color:#3a4050}
+.t-pw{background:rgba(62,207,116,.12);color:var(--green)}
+.t-other{background:rgba(232,77,77,.12);color:var(--red)}
+
+/* BUTTONS */
+.btn{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;padding:10px 18px;border:none;border-radius:3px;cursor:pointer;transition:all .15s}
+.btn-pri{background:var(--amber);color:var(--bg)}
+.btn-pri:hover{background:#f0b848}
+.btn-pri:disabled{opacity:.5;cursor:not-allowed}
+.btn-ghost{background:transparent;color:var(--text-dim);border:1px solid var(--border)}
+.btn-ghost:hover{border-color:var(--border-hi);color:var(--text)}
+.btn-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+/* CHIPS */
+.chips{display:flex;gap:7px;flex-wrap:wrap;padding:11px 16px;border-top:1px solid var(--border)}
+.chip{font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:2px;display:flex;align-items:center;gap:4px}
+.chip-n{font-weight:600;font-size:11px}
+
+/* SUB BOX */
+.sub-box{background:var(--bg);border:1px solid var(--green-dim);border-radius:3px;
+  padding:12px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.sub-box code{font-family:var(--mono);font-size:11px;color:var(--green);flex:1;word-break:break-all}
+.copy-btn{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.08em;
+  text-transform:uppercase;padding:6px 12px;background:var(--green-dim);color:var(--green);
+  border:none;border-radius:2px;cursor:pointer;white-space:nowrap;transition:background .15s}
+.copy-btn:hover{background:#1f6038}
+
+.hint{font-size:11px;color:var(--text-dim);line-height:1.7;font-family:var(--mono)}
+.sp{flex:1}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{width:12px;height:12px;border:2px solid var(--amber-dim);border-top-color:var(--amber);
+  border-radius:50%;animation:spin .6s linear infinite;flex-shrink:0}
+@media(max-width:600px){main{padding:14px}.grid2{grid-template-columns:1fr}header{padding:11px 14px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="dot"></div>
+  <h1>UAL Schedule → Calendar</h1>
+  <span id="headerSub"></span>
+</header>
+
+<main>
+
+<!-- 01 CONFIG -->
+<div class="card">
+  <div class="card-head">
+    <span class="badge" id="b1">01</span>
+    <span class="card-label">GitHub Config</span>
+  </div>
+  <div class="card-body">
+    <div class="grid2">
+      <div><label>GitHub Username</label>
+        <input type="text" id="ghUser" placeholder="olamideiledare1982"></div>
+      <div><label>Repository Name</label>
+        <input type="text" id="ghRepo" placeholder="Schedule-Calendar"></div>
+    </div>
+    <div><label>Classic Token (repo scope)</label>
+      <input type="password" id="ghToken" placeholder="ghp_xxxxxxxxxxxx"></div>
+    <div class="btn-row">
+      <button class="btn btn-pri" onclick="saveConfig()">Save Config</button>
+      <span class="hint" id="cfgHint" style="color:var(--text-dim)"></span>
+    </div>
+  </div>
+</div>
+
+<!-- 02 UPLOAD -->
+<div class="card">
+  <div class="card-head">
+    <span class="badge" id="b2">02</span>
+    <span class="card-label">Upload Instructor Schedule PDF</span>
+  </div>
+  <div class="card-body" style="padding-bottom:0">
+    <div class="drop" id="dropZone">
+      <input type="file" id="fileInput" accept=".pdf" onchange="handleFile(this.files[0])">
+      <div class="drop-icon">📄</div>
+      <div class="drop-txt"><strong>Drop Instructor Schedule PDF</strong><br>or tap to select</div>
+    </div>
+  </div>
+  <div class="status" id="parseStatus">Waiting for PDF…</div>
+</div>
+
+<!-- 03 REVIEW -->
+<div class="card" id="cardReview" style="display:none">
+  <div class="card-head">
+    <span class="badge done" id="b3">03</span>
+    <span class="card-label">Parsed Events</span>
+    <span class="sp"></span>
+    <span id="periodLbl" style="font-family:var(--mono);font-size:11px;color:var(--amber)"></span>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr>
+        <th>Date</th><th>Type</th><th>Start</th>
+        <th>Equipment</th><th>Student IDs</th>
+      </tr></thead>
+      <tbody id="evtBody"></tbody>
+    </table>
+  </div>
+  <div class="chips" id="chipsRow"></div>
+</div>
+
+<!-- 04 PUBLISH -->
+<div class="card" id="cardPublish" style="display:none">
+  <div class="card-head">
+    <span class="badge" id="b4">04</span>
+    <span class="card-label">Push to GitHub</span>
+  </div>
+  <div class="card-body">
+    <p class="hint">Commits <code style="color:var(--cyan)">schedule.ics</code> to your repo. Subscribe Apple Calendar to the raw URL — it auto-refreshes.</p>
+    <div class="btn-row">
+      <button class="btn btn-pri" id="pubBtn" onclick="publishICS()">Generate + Push ICS</button>
+      <button class="btn btn-ghost" onclick="downloadICS()">Download ICS Only</button>
+    </div>
+  </div>
+  <div class="status" id="pubStatus">Ready.</div>
+  <div id="subBox" style="display:none;padding:14px;border-top:1px solid var(--border)">
+    <div class="sub-box"><code id="subUrl"></code>
+      <button class="copy-btn" onclick="copyUrl()">Copy URL</button></div>
+    <p class="hint" style="margin-top:10px">
+      Apple Calendar → File → New Calendar Subscription → paste URL.<br>
+      Set auto-refresh to hourly or daily.
+    </p>
+  </div>
+</div>
+
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let cfg = {user:'', repo:'', token:''};
+let parsedEvents = [];
+let cachedICS = '';
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  try {
+    const s = localStorage.getItem('ual_sched_cfg');
+    if (s) {
+      cfg = JSON.parse(s);
+      document.getElementById('ghUser').value  = cfg.user  || '';
+      document.getElementById('ghRepo').value  = cfg.repo  || '';
+      document.getElementById('ghToken').value = cfg.token || '';
+      if (cfg.user && cfg.token) {
+        hint('cfgHint','✓ Config loaded','var(--green)');
+        document.getElementById('b1').classList.add('done');
+      }
+    }
+  } catch(e){}
+
+  // Drag-and-drop
+  const dz = document.getElementById('dropZone');
+  dz.addEventListener('dragover', e=>{ e.preventDefault(); dz.classList.add('over'); });
+  dz.addEventListener('dragleave', ()=> dz.classList.remove('over'));
+  dz.addEventListener('drop', e=>{
+    e.preventDefault(); dz.classList.remove('over');
+    const f = e.dataTransfer.files[0];
+    if (f?.type === 'application/pdf') handleFile(f);
+  });
+});
+
+function saveConfig() {
+  cfg.user  = document.getElementById('ghUser').value.trim();
+  cfg.repo  = document.getElementById('ghRepo').value.trim();
+  cfg.token = document.getElementById('ghToken').value.trim();
+  if (!cfg.user || !cfg.repo || !cfg.token) {
+    hint('cfgHint','⚠ All fields required','var(--red)'); return;
+  }
+  localStorage.setItem('ual_sched_cfg', JSON.stringify(cfg));
+  hint('cfgHint','✓ Saved','var(--green)');
+  document.getElementById('b1').classList.add('done');
+}
+
+// ─── PDF → TEXT ──────────────────────────────────────────────────────────────
+async function handleFile(file) {
+  setStatus('parseStatus','busy','Extracting PDF text…');
+  document.querySelector('.drop-txt').innerHTML =
+    `<strong>${file.name}</strong><br>Processing…`;
+
+  try {
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+    let full = '';
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const tc   = await page.getTextContent();
+      // Sort items: top-to-bottom (y desc), then left-to-right (x asc)
+      const items = tc.items.slice().sort((a,b)=> {
+        const dy = b.transform[5] - a.transform[5];
+        return Math.abs(dy) > 3 ? dy : a.transform[4] - b.transform[4];
+      });
+      full += items.map(i=>i.str).join(' ') + '\n';
+    }
+    parseSchedule(full);
+  } catch(err) {
+    setStatus('parseStatus','err','✕ PDF error: ' + err.message);
+    console.error(err);
+  }
+}
+
+// ─── PARSER ──────────────────────────────────────────────────────────────────
+const ALL_TYPES = ['LDRQ','FTDB','CQTL','CQMV','QPV','ROE','FFS','CQT',
+                   'TRN','RSV','PVP','RD1','RDO','PW','XS','VAS','VDO',
+                   'VAC','SD1','ABS','LEAVE','ST','UB'];
+const ADMIN = new Set(['RD1','RDO','PW','XS','VAS','VDO','VAC','SD1','ABS','LEAVE','UB','RSV','TRN','ST']);
+
+// Durations in hours for timed events
+const DURATIONS = {FFS:6, FTDB:6, LDRQ:4, ROE:2, CQT:4, CQTL:4, QPV:6, TRN:8, PW:8};
+
+function parseSchedule(raw) {
+  const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean);
+  let year = new Date().getFullYear(), month = new Date().getMonth()+1;
+  let pilotName = '', empId = '';
+
+  for (const ln of lines) {
+    let m = ln.match(/Bid Period:\s*(\d{2})\/(\d{2})\/(\d{2})/);
+    if (m) { month = +m[1]; year = 2000 + +m[3]; }
+    m = ln.match(/(U\d+)\s*[-–]\s*([A-Za-z,\s]+)/);
+    if (m && !pilotName) { empId = m[1]; pilotName = m[2].trim(); }
+  }
+
+  const full = lines.join(' ');
+  const dayRe = /\b(\d{1,2})\s+(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b(.*?)(?=\b\d{1,2}\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b|Report Generated|Page \d|$)/gs;
+
+  const events = [];
+  let dm;
+  while ((dm = dayRe.exec(full)) !== null) {
+    const day = +dm[1], dname = dm[2], content = dm[3].trim();
+    if (day < 1 || day > 31) continue;
+    events.push(...parseDayContent(content, day, dname, month, year, empId));
+  }
+
+  if (!events.length) {
+    setStatus('parseStatus','err','✕ No events found — check PDF format in console');
+    console.warn('Raw text sample:', full.slice(0,3000));
+    return;
+  }
+
+  parsedEvents = events;
+  renderTable(events, pilotName, month, year);
+}
+
+function parseDayContent(content, day, dname, month, year, selfId) {
+  const typeRe = new RegExp(`\\b(${ALL_TYPES.join('|')})\\b`, 'g');
+  const hits = [];
+  let h;
+  while ((h = typeRe.exec(content)) !== null) hits.push({type:h[1], idx:h.index});
+  if (!hits.length) return [];
+
+  const date = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+  const events = [];
+  const seen = new Set();
+
+  for (let i = 0; i < hits.length; i++) {
+    const {type, idx} = hits[i];
+
+    // Equipment lives BEFORE this type keyword
+    const preStart = i === 0 ? 0 : hits[i-1].idx + hits[i-1].type.length;
+    const prefix   = content.substring(preStart, idx);
+    const equipment = extractEquip(prefix);
+
+    // Body lives AFTER this type keyword, before next type
+    const bodyEnd = i+1 < hits.length ? hits[i+1].idx : content.length;
+    const body    = content.substring(idx + type.length, bodyEnd).trim();
+
+    // Time
+    const tm = body.match(/\b(\d{1,2}:\d{2})\b/);
+    const startTime = tm ? tm[1] : null;
+
+    // Filter echo entries: non-admin type with no time and no equipment before it
+    if (!startTime && !ADMIN.has(type) && !equipment) continue;
+
+    // De-dup
+    const key = `${day}-${type}-${startTime||'x'}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    // Student IDs only
+    const students = extractStudents(body, selfId);
+    const isAdmin  = ADMIN.has(type);
+    const dur      = DURATIONS[type] || (isAdmin ? 0 : 4);
+
+    events.push({date, dayName:dname, type, startTime, equipment, students, isAdmin, duration:dur});
+  }
+  return events;
+}
+
+function extractEquip(s) {
+  const m = s.match(/B7[56][567][-–][\w#]+/);
+  return m ? m[0] : '';
+}
+
+function extractStudents(body, selfId) {
+  // Extract employee IDs only — no names stored
+  const pat = /U(\d{5,7})/g;
+  const out = [];
+  let m;
+  while ((m = pat.exec(body)) !== null) {
+    const id = 'U' + m[1];
+    if (selfId && id === selfId) continue;
+    out.push(id);
+  }
+  return out;
+}
+
+// ─── TABLE RENDER ────────────────────────────────────────────────────────────
+function renderTable(events, pilotName, month, year) {
+  document.getElementById('periodLbl').textContent =
+    `${pilotName} · ${String(month).padStart(2,'0')}/${year}`;
+  document.getElementById('headerSub').textContent =
+    pilotName;
+
+  const tbody = document.getElementById('evtBody');
+  tbody.innerHTML = '';
+  const counts = {};
+
+  for (const e of events) {
+    counts[e.type] = (counts[e.type]||0) + 1;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="c-date">${e.date.slice(5)} ${e.dayName}</td>
+      <td><span class="tb ${tClass(e.type)}">${e.type}</span></td>
+      <td class="c-time">${e.startTime || (e.isAdmin ? '—' : '?')}</td>
+      <td class="c-loc">${e.equipment || '—'}</td>
+      <td class="c-stu" style="font-size:10px;color:var(--text)">${e.students.join('<br>')||'—'}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+
+  // Summary chips
+  const chips = document.getElementById('chipsRow');
+  chips.innerHTML = '';
+  for (const [type, n] of Object.entries(counts)) {
+    const d = document.createElement('div');
+    d.className = `chip tb ${tClass(type)}`;
+    d.innerHTML = `<span class="chip-n">${n}×</span> ${type}`;
+    chips.appendChild(d);
+  }
+
+  document.getElementById('cardReview').style.display = '';
+  document.getElementById('cardPublish').style.display = '';
+  document.getElementById('b2').classList.add('done');
+  setStatus('parseStatus','ok',`✓ ${events.length} events parsed`);
+}
+
+function tClass(type) {
+  if (type==='FFS') return 't-ffs';
+  if (['FTDB','QPV'].includes(type)) return 't-ftdb';
+  if (type==='RD1') return 't-rd';
+  if (['RDO','VAC','VDO','VAS','ABS','SD1','LEAVE'].includes(type)) return 't-off';
+  if (['PW','TRN','RSV'].includes(type)) return 't-pw';
+  return 't-other';
+}
+
+// ─── ICS GENERATION ──────────────────────────────────────────────────────────
+function generateICS(events) {
+  const stamp = icsUTC(new Date());
+  const lines = [
+    'BEGIN:VCALENDAR','VERSION:2.0',
+    'PRODID:-//UAL Sched Cal//EN','CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH','X-WR-CALNAME:UAL Schedule',
+    'X-WR-TIMEZONE:America/Denver','X-PUBLISHED-TTL:PT1H',
+  ];
+
+  // Skip pure off days; keep everything else
+  const SKIP = new Set(['RDO','VAC','VDO','VAS','ABS','LEAVE']);
+
+  for (const e of events) {
+    if (SKIP.has(e.type)) continue;
+    const uid = `${e.date}T${e.type}${e.startTime||'x'}@ualschedcal`;
+    const summary = buildSummary(e);
+    const loc  = e.equipment || '';
+    const desc = e.students.length ? 'Students: '+e.students.join(', ') : '';
+
+    if (!e.startTime) {
+      // All-day
+      const ds = e.date.replace(/-/g,'');
+      const de = nextDay(e.date).replace(/-/g,'');
+      lines.push('BEGIN:VEVENT',`UID:${uid}`,`DTSTAMP:${stamp}`,
+        `DTSTART;VALUE=DATE:${ds}`,`DTEND;VALUE=DATE:${de}`,
+        `SUMMARY:${esc(summary)}`,
+        loc  ? `LOCATION:${esc(loc)}`  : '',
+        desc ? `DESCRIPTION:${esc(desc)}` : '',
+        'END:VEVENT');
+    } else {
+      const [hh,mm] = e.startTime.split(':').map(Number);
+      const sd = new Date(`${e.date}T${pad(hh)}:${pad(mm)}:00`);
+      const ed = new Date(sd.getTime() + (e.duration||4)*3600000);
+      lines.push('BEGIN:VEVENT',`UID:${uid}`,`DTSTAMP:${stamp}`,
+        `DTSTART;TZID=America/Denver:${localDT(sd)}`,
+        `DTEND;TZID=America/Denver:${localDT(ed)}`,
+        `SUMMARY:${esc(summary)}`,
+        loc  ? `LOCATION:${esc(loc)}`  : '',
+        desc ? `DESCRIPTION:${esc(desc)}` : '',
+        'END:VEVENT');
+    }
+  }
+  lines.push('END:VCALENDAR');
+  return lines.filter(l=>l).join('\r\n');
+}
+
+function buildSummary(e) {
+  const labels = {FFS:'SIM',FTDB:'FTD',LDRQ:'LDRQ',ROE:'ROE',
+    CQTL:'CQ',CQT:'CQ',TRN:'TRN',RSV:'RSV',PW:'PW',
+    RD1:'RD1',QPV:'QPV',XS:'XS',ST:'ST',SD1:'SD1'};
+  const lbl  = labels[e.type] || e.type;
+  const equip = e.equipment ? ' · '+e.equipment.replace(/[-#\d]+DEN.*$/,'') : '';
+  return lbl + equip;
+}
+
+function icsUTC(d) { return d.toISOString().replace(/[-:]/g,'').slice(0,15)+'Z'; }
+function localDT(d) {
+  return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+}
+function nextDay(s) {
+  const d = new Date(s+'T12:00:00Z'); d.setUTCDate(d.getUTCDate()+1);
+  return d.toISOString().slice(0,10);
+}
+function esc(s){ return (s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n'); }
+function pad(n){ return String(n).padStart(2,'0'); }
+
+// ─── PUBLISH ─────────────────────────────────────────────────────────────────
+async function publishICS() {
+  if (!cfg.user || !cfg.token) { setStatus('pubStatus','err','✕ Save config first'); return; }
+  if (!parsedEvents.length)    { setStatus('pubStatus','err','✕ Upload a PDF first'); return; }
+
+  document.getElementById('pubBtn').disabled = true;
+  setStatus('pubStatus','busy','Generating ICS…');
+  cachedICS = generateICS(parsedEvents);
+
+  const b64  = btoa(unescape(encodeURIComponent(cachedICS)));
+  const path = 'schedule.ics';
+  const api  = `https://api.github.com/repos/${cfg.user}/${cfg.repo}/contents/${path}`;
+  const hdrs = {'Authorization':'token '+cfg.token,
+    'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'};
+
+  try {
+    setStatus('pubStatus','busy','Checking existing file…');
+    let sha = null;
+    const chk = await fetch(api, {headers: hdrs});
+    if (chk.ok) sha = (await chk.json()).sha;
+
+    setStatus('pubStatus','busy','Pushing schedule.ics…');
+    const body = {message:`Update schedule.ics · ${new Date().toISOString().slice(0,10)}`, content:b64};
+    if (sha) body.sha = sha;
+
+    const res = await fetch(api, {method:'PUT', headers:hdrs, body:JSON.stringify(body)});
+    if (!res.ok) { const e=await res.json(); throw new Error(e.message||res.statusText); }
+
+    const rawUrl = `https://raw.githubusercontent.com/${cfg.user}/${cfg.repo}/main/schedule.ics`;
+    setStatus('pubStatus','ok','✓ Pushed — schedule.ics is live');
+    document.getElementById('subUrl').textContent = rawUrl;
+    document.getElementById('subBox').style.display = '';
+    document.getElementById('b4').classList.add('done');
+  } catch(err) {
+    setStatus('pubStatus','err','✕ '+err.message);
+  } finally {
+    document.getElementById('pubBtn').disabled = false;
+  }
+}
+
+function downloadICS() {
+  if (!parsedEvents.length) return;
+  cachedICS = generateICS(parsedEvents);
+  const a = Object.assign(document.createElement('a'),{
+    href: URL.createObjectURL(new Blob([cachedICS],{type:'text/calendar'})),
+    download: 'schedule.ics'
+  });
+  a.click();
+}
+
+function copyUrl() {
+  navigator.clipboard.writeText(document.getElementById('subUrl').textContent)
+    .then(()=>{ const b=document.querySelector('.copy-btn');
+      b.textContent='Copied!'; setTimeout(()=>b.textContent='Copy URL',1500); });
+}
+
+// ─── UTILS ───────────────────────────────────────────────────────────────────
+function setStatus(id, state, msg) {
+  const el = document.getElementById(id);
+  el.className = 'status ' + state;
+  el.innerHTML = state==='busy' ? `<div class="spin"></div> ${msg}` : msg;
+}
+function hint(id, msg, color) {
+  const el = document.getElementById(id);
+  el.textContent = msg; el.style.color = color;
+}
+</script>
+</body>
+</html>
