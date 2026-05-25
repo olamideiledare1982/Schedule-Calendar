@@ -345,31 +345,31 @@ function parseDayContent(content, day, dname, month, year, selfId) {
   const events = [];
   const seen = new Set();
 
+  // Equipment: search entire day content — PDF.js ordering is unreliable
+  const equipment = extractEquip(content);
+
   for (let i = 0; i < hits.length; i++) {
     const {type, idx} = hits[i];
 
-    // Equipment lives BEFORE this type keyword
-    const preStart = i === 0 ? 0 : hits[i-1].idx + hits[i-1].type.length;
-    const prefix   = content.substring(preStart, idx);
-    const equipment = extractEquip(prefix);
-
-    // Body lives AFTER this type keyword, before next type
     const bodyEnd = i+1 < hits.length ? hits[i+1].idx : content.length;
     const body    = content.substring(idx + type.length, bodyEnd).trim();
 
-    // Time
     const tm = body.match(/\b(\d{1,2}:\d{2})\b/);
     const startTime = tm ? tm[1] : null;
 
-    // Filter echo entries: non-admin type with no time and no equipment before it
-    if (!startTime && !ADMIN.has(type) && !equipment) continue;
+    // Admin types: keep only first per day (echoes have no time)
+    // Non-admin: skip if no time (description echo)
+    if (ADMIN.has(type)) {
+      const adminKey = `${day}-${type}`;
+      if (seen.has(adminKey)) continue;
+      seen.add(adminKey);
+    } else {
+      if (!startTime) continue;
+      const key = `${day}-${type}-${startTime}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+    }
 
-    // De-dup
-    const key = `${day}-${type}-${startTime||'x'}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    // Student IDs only
     const students = extractStudents(body, selfId);
     const isAdmin  = ADMIN.has(type);
     const dur      = DURATIONS[type] || (isAdmin ? 0 : 4);
@@ -380,8 +380,10 @@ function parseDayContent(content, day, dname, month, year, selfId) {
 }
 
 function extractEquip(s) {
-  const m = s.match(/B7[56][567][-–][\w#]+/);
-  return m ? m[0] : '';
+  // Tolerate spaces PDF.js may insert within the aircraft string
+  const m = s.match(/B\s*7\s*[56]\s*[567]\s*[-\u2013]\s*[\w]+/);
+  if (!m) return '';
+  return m[0].replace(/\s+/g,'');
 }
 
 function extractStudents(body, selfId) {
