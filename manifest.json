@@ -1,0 +1,15 @@
+{
+  "name": "UA Schedule Importer",
+  "short_name": "UA Schedule",
+  "description": "Parses a United instructor schedule PDF into a calendar (.ics) file.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b3d91",
+  "theme_color": "#0b3d91",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
