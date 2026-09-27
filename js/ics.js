@@ -41,6 +41,15 @@ function deterministicUid(event, stationSuffix) {
   return `UAL-${type}-${dateStr}-${timeStr}-${stationSuffix}`;
 }
 
+const UID_DOMAIN = '@uascheduleimporter.local';
+
+// Full UID (with domain suffix) for a ParsedEvent — the exact string that
+// ends up in the .ics UID: line. Exposed so app.js can compute the same
+// value when diffing this import against the last one for change tracking.
+function fullUid(event, stationSuffix) {
+  return deterministicUid(event, stationSuffix) + UID_DOMAIN;
+}
+
 function escapeText(s) {
   return String(s)
     .replace(/\\/g, '\\\\')
@@ -65,7 +74,7 @@ function foldLine(line) {
 }
 
 function buildVEvent(event, { stationSuffix, sequence, nowStamp }) {
-  const uid = deterministicUid(event, stationSuffix) + '@uascheduleimporter.local';
+  const uid = fullUid(event, stationSuffix);
   const lines = [];
   lines.push('BEGIN:VEVENT');
   lines.push(`UID:${uid}`);
@@ -111,12 +120,48 @@ function addDays(date, n) {
 }
 
 /**
+ * A "cancellation" VEVENT for an event that existed in a previously
+ * downloaded schedule for this bid period but is gone from the new parse
+ * (moved, removed, or replaced). Reusing its original UID with
+ * STATUS:CANCELLED and a bumped SEQUENCE is the standard iCalendar way to
+ * tell a calendar app "this event you already have should go away" — Apple
+ * Calendar honors this on a normal file import, which is what makes
+ * re-importing an updated month self-cleaning instead of leaving orphaned
+ * events behind.
+ */
+function buildCancelVEvent(descriptor, nowStamp) {
+  const lines = [];
+  lines.push('BEGIN:VEVENT');
+  lines.push(`UID:${descriptor.uid}`);
+  lines.push(`DTSTAMP:${nowStamp}`);
+  lines.push(`SEQUENCE:${descriptor.sequence || 1}`);
+  lines.push('STATUS:CANCELLED');
+  lines.push(`SUMMARY:${escapeText(descriptor.title)}`);
+
+  if (descriptor.isAllDay) {
+    lines.push(`DTSTART;VALUE=DATE:${icsDateOnly(descriptor.date)}`);
+    lines.push(`DTEND;VALUE=DATE:${icsDateOnly(addDays(descriptor.date, 1))}`);
+  } else {
+    lines.push(`DTSTART;TZID=America/Denver:${icsDateUTC(descriptor.startDate)}`);
+    lines.push(`DTEND;TZID=America/Denver:${icsDateUTC(descriptor.endDate)}`);
+  }
+
+  lines.push('END:VEVENT');
+  return lines.map(foldLine).join('\r\n');
+}
+
+/**
  * Builds a full .ics calendar document from an array of ParsedEvent objects.
  * `calendarName` sets X-WR-CALNAME, a hint some clients use to suggest a
  * target calendar on import (not a hard guarantee — Apple Calendar still
  * lets the user pick).
+ *
+ * `cancelledDescriptors` (optional) is a list of { uid, title, isAllDay,
+ * date, startDate, endDate, sequence } objects for events that dropped out
+ * of the schedule since the last import — each becomes a STATUS:CANCELLED
+ * VEVENT appended to the file (see buildCancelVEvent above).
  */
-function buildIcs(events, { calendarName = 'UA Schedule', stationSuffix = 'DEN' } = {}) {
+function buildIcs(events, { calendarName = 'UA Schedule', stationSuffix = 'DEN', cancelledDescriptors = [] } = {}) {
   const nowStamp = icsStamp(new Date());
   const lines = [];
   lines.push('BEGIN:VCALENDAR');
@@ -129,11 +174,14 @@ function buildIcs(events, { calendarName = 'UA Schedule', stationSuffix = 'DEN' 
   for (const event of events) {
     lines.push(buildVEvent(event, { stationSuffix, sequence: 0, nowStamp }));
   }
+  for (const descriptor of cancelledDescriptors) {
+    lines.push(buildCancelVEvent(descriptor, nowStamp));
+  }
 
   lines.push('END:VCALENDAR');
   return lines.join('\r\n') + '\r\n';
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { buildIcs, deterministicUid, IMPORT_MARKER };
+  module.exports = { buildIcs, deterministicUid, fullUid, IMPORT_MARKER };
 }

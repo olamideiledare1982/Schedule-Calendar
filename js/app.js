@@ -1,6 +1,7 @@
-/* global pdfjsLib, extractFromPdf, parseSchedule, setInstructorEmployeeId, buildIcs */
+/* global pdfjsLib, extractFromPdf, parseSchedule, setInstructorEmployeeId, buildIcs, fullUid */
 
 const SETTINGS_KEY = 'ua-schedule-importer-settings-v1';
+const HISTORY_KEY = 'ua-schedule-history-v1';
 
 function loadSettings() {
   try {
@@ -56,6 +57,73 @@ function setStatus(msg, isError = false) {
   el.status.className = isError ? 'status error' : 'status';
 }
 
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '{}'); } catch (e) { return {}; }
+}
+function saveHistory(h) {
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(h)); } catch (e) { /* ignore */ }
+}
+
+function localDateKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Groups history by bid period (falls back to the min/max event date span if
+// the "Bid Period:" line wasn't found in the PDF) so a September re-import
+// only gets diffed against the last September import, never against August.
+function bidPeriodKey(result) {
+  if (result.bidPeriodStart && result.bidPeriodEnd) {
+    return `${localDateKey(result.bidPeriodStart)}_${localDateKey(result.bidPeriodEnd)}`;
+  }
+  if (result.addedEvents.length) {
+    const times = result.addedEvents.map((e) => e.date.getTime());
+    return `derived_${localDateKey(new Date(Math.min(...times)))}_${localDateKey(new Date(Math.max(...times)))}`;
+  }
+  return null;
+}
+
+/**
+ * Compares this parse against the last schedule imported for the same bid
+ * period. Anything that was in that last import but isn't in this one
+ * (moved, dropped, replaced) is queued as a STATUS:CANCELLED entry for the
+ * .ics — so re-importing an updated month both updates changed events (by
+ * UID, matched automatically by the calendar app) AND removes ones that fell
+ * off the schedule, with nothing to clean up by hand. Also updates the
+ * stored history to this parse's events, ready for the next comparison.
+ */
+function diffAgainstHistory(result, stationSuffix) {
+  const key = bidPeriodKey(result);
+  if (!key) return [];
+  const historyKey = `${stationSuffix}::${key}`;
+  const history = loadHistory();
+  const previousEntries = history[historyKey] || [];
+
+  const currentUids = new Set(result.addedEvents.map((ev) => fullUid(ev, stationSuffix)));
+  const removed = previousEntries.filter((entry) => !currentUids.has(entry.uid));
+  const cancelledDescriptors = removed.map((entry) => ({
+    uid: entry.uid,
+    title: entry.title,
+    isAllDay: entry.isAllDay,
+    date: new Date(entry.date),
+    startDate: entry.startDate != null ? new Date(entry.startDate) : null,
+    endDate: entry.endDate != null ? new Date(entry.endDate) : null,
+    sequence: (entry.sequence || 0) + 1,
+  }));
+
+  history[historyKey] = result.addedEvents.map((ev) => ({
+    uid: fullUid(ev, stationSuffix),
+    title: ev.title,
+    isAllDay: ev.isAllDay,
+    date: ev.date.getTime(),
+    startDate: ev.startDate ? ev.startDate.getTime() : null,
+    endDate: ev.endDate ? ev.endDate.getTime() : null,
+    sequence: 0,
+  }));
+  saveHistory(history);
+
+  return cancelledDescriptors;
+}
+
 async function handleFile(file) {
   if (!file) return;
   setStatus(`Reading ${file.name}...`);
@@ -75,9 +143,13 @@ async function handleFile(file) {
 
     setStatus('Parsing schedule rules...');
     const result = parseSchedule(bidPeriodLine, rawEvents);
+    result.cancelledDescriptors = diffAgainstHistory(result, settings.stationSuffix);
     lastResult = result;
     renderResult(result, rawEvents);
-    setStatus(`Done — ${result.addedEvents.length} event(s) ready.`);
+    const cancelNote = result.cancelledDescriptors.length
+      ? ` — ${result.cancelledDescriptors.length} removed event(s) will be cancelled on import.`
+      : '';
+    setStatus(`Done — ${result.addedEvents.length} event(s) ready.${cancelNote}`);
     el.downloadBtn.disabled = result.addedEvents.length === 0;
   } catch (err) {
     console.error(err);
@@ -91,7 +163,10 @@ function renderResult(result, rawEvents) {
   const bidRange = result.bidPeriodStart && result.bidPeriodEnd
     ? `${result.bidPeriodStart.toLocaleDateString()} – ${result.bidPeriodEnd.toLocaleDateString()}`
     : 'not found in PDF';
-  el.summary.textContent = `Bid period: ${bidRange}  •  ${result.addedEvents.length} event(s) to import  •  ${result.unparsedLines.length} row(s) skipped/unparsed`;
+  const cancelSummary = result.cancelledDescriptors && result.cancelledDescriptors.length
+    ? `  •  ${result.cancelledDescriptors.length} removed event(s) to cancel`
+    : '';
+  el.summary.textContent = `Bid period: ${bidRange}  •  ${result.addedEvents.length} event(s) to import  •  ${result.unparsedLines.length} row(s) skipped/unparsed${cancelSummary}`;
 
   el.eventList.innerHTML = '';
   for (const ev of result.addedEvents) {
@@ -155,6 +230,7 @@ el.downloadBtn.addEventListener('click', () => {
   const ics = buildIcs(lastResult.addedEvents, {
     calendarName: settings.calendarName,
     stationSuffix: settings.stationSuffix,
+    cancelledDescriptors: lastResult.cancelledDescriptors || [],
   });
   const blob = new Blob([ics], { type: 'text/calendar' });
   const url = URL.createObjectURL(blob);
