@@ -340,8 +340,6 @@ function buildTrainingEvent(raw, date, codeUpper, studentPairs, descriptionRaw, 
 }
 
 function interpret(raw, date, result) {
-  if (raw.start === PLACEHOLDER_TIME) return null;
-
   const { students: studentPairs, description: descriptionRaw } = splitStudentsAndDescription(raw.tailText);
   // The Description column is sometimes the only place the real code shows
   // up (e.g. an "OT" row whose Type cell was left blank in the source and
@@ -355,8 +353,20 @@ function interpret(raw, date, result) {
   const codeUpper = effectiveCode.toUpperCase();
 
   if (SKIP_CODES.has(codeUpper)) return null;
+  // RSV and Project Work rows are checked BEFORE the placeholder-time bail
+  // below: a plain RSV day (no assigned work window) is printed with the
+  // same "02:31" sentinel start time as RDO/RD1, since it has no real
+  // duty time either — but unlike RDO/RD1 it still needs a calendar event
+  // (buildReserveEvent's generic 04:00-09:00 block), and neither it nor
+  // Project Work actually reads raw.start. Checking the placeholder first
+  // (as an earlier version of this did) silently dropped every plain RSV
+  // day before it ever reached buildReserveEvent.
   if (codeUpper === RESERVE_CODE) return buildReserveEvent(date, raw.tailText);
   if (codeUpper === PROJECT_WORK_CODE) return buildProjectWorkEvent(date, raw.tailText);
+
+  // Everything else (training codes) needs a real start time; the sentinel
+  // means this row has none, so there's nothing to build.
+  if (raw.start === PLACEHOLDER_TIME) return null;
 
   return buildTrainingEvent(raw, date, codeUpper, studentPairs, descriptionRaw, result);
 }
