@@ -5,7 +5,7 @@
 // manifest's display:standalone and index.html's navigator.storage.persist()
 // call — Safari only exempts installed, persistently-stored PWAs from the
 // 7-day Intelligent Tracking Prevention data cap.
-const CACHE_NAME = 'ua-schedule-importer-v2';
+const CACHE_NAME = 'ua-schedule-importer-v3';
 const APP_SHELL = [
   './',
   './index.html',
